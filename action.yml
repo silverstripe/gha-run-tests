@@ -1,0 +1,235 @@
+name: Run tests
+description: Run tests for a single matrix entry
+
+inputs:
+  endtoend:
+    type: boolean
+    default: false
+  # if endtoend_suite is blank or "root" it will run suites defined in root behat.yml
+  # passing this input is intended for extra_jobs running non-root suites
+  # e.g. running "asset-admin" behat from silverstripe-installer
+  endtoend_suite:
+    type: string
+    required: false
+    default: ''
+  endtoend_config:
+    type: string
+    required: false
+    default: ''
+  phpcoverage:
+    type: boolean
+    default: false
+  phplinting:
+    type: boolean
+    default: false
+  phpunit:
+    type: boolean
+    default: false
+  phpunit_suite:
+    type: string
+    required: false
+    default: ''
+  phpunit_fail_on_warning:
+    type: boolean
+    default: false
+  js:
+    type: boolean
+    default: false
+
+runs:
+  using: composite
+  steps:
+
+    - name: Validate inputs
+      shell: bash
+      env:
+        PHPUNIT_SUITE: ${{ inputs.phpunit_suite }}
+        ENDTOEND_SUITE: ${{ inputs.endtoend_suite }}
+        ENDTOEND_CONFIG: ${{ inputs.endtoend_config }}
+      run: |
+        if ! [[ "$PHPUNIT_SUITE" =~ ^[a-zA-Z0-9_\-]*$ ]]; then
+          echo "Invalid input for phpunit_suite"
+          exit 1
+        fi
+        if ! [[ "$ENDTOEND_SUITE" =~ ^[a-zA-Z0-9_\-]*$ ]]; then
+          echo "Invalid input for endtoend_suite"
+          exit 1
+        fi
+        if ! [[ "$ENDTOEND_CONFIG" =~ ^[a-zA-Z0-9_\./\-]*$ ]]; then
+          echo "Invalid input for endtoend_config"
+          exit 1
+        fi
+
+    - name: Run PHPUnit
+      # input booleans are converted to strings
+      # https://docs.github.com/en/actions/learn-github-actions/expressions#functions
+      if: ${{ inputs.phpunit == 'true' }}
+      shell: bash
+      env:
+        PHPUNIT_SUITE: ${{ inputs.phpunit_suite }}
+      run: |
+        FAIL_ON_WARNING=
+        if [ "${{ inputs.phpunit_fail_on_warning }}" == "true" ]; then
+          FAIL_ON_WARNING='--fail-on-warning'
+        fi
+        echo "Running PHPUnit with options: $FAIL_ON_WARNING"
+        if [ "$PHPUNIT_SUITE" == "all" ]; then
+          vendor/bin/phpunit --verbose --colors=always $FAIL_ON_WARNING
+        else
+          vendor/bin/phpunit --verbose --colors=always --testsuite "$PHPUNIT_SUITE" $FAIL_ON_WARNING
+        fi
+        echo "Passed"
+
+    - name: Setup chrome and chromedriver
+      if: ${{ inputs.endtoend == 'true' }}
+      shell: bash
+      run: |
+        echo "Default versions of google-chrome and chromedriver"
+        GCVR=$(google-chrome --version)
+        CDVR=$(chromedriver --version)
+        echo "$GCVR"
+        echo "$CDVR"
+        # Example version number is 101.0.4951.64
+        [[ "$GCVR" =~ ([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+ ]]
+        GCV="${BASH_REMATCH[1]}"
+        [[ "$CDVR" =~ ([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+ ]]
+        CDV="${BASH_REMATCH[1]}"
+        # Reinstall if a.b.c versions do not match, though allow a different .d version
+        if [ "$GCV" != "$CDV" ]; then
+          WGC=$(which google-chrome)
+          echo "google-chrome and chromedriver versions do not match, reinstalling"
+          sudo apt remove -y --purge google-chrome-stable || true
+          # Note that on ubuntu 20.04 and later, these will be installed via a snap and there seems
+          # too be a permission error with using snap on github actions, but it does not seem to matter
+          # mkdir: cannot create directory '/run/user/1001': Permission denied
+          sudo apt install -y chromium-browser chromium-chromedriver
+          echo "Updated versions of chromium-browser and chromedriver"
+          sudo ln -s $(which chromium-browser) "$WGC"
+          google-chrome --version
+          chromedriver --version
+        else
+          echo "Default versions match, continuing"
+        fi
+
+    - name: Run end-to-end tests
+      if: ${{ inputs.endtoend == 'true' }}
+      shell: bash
+      env:
+        ENDTOEND_SUITE: ${{ inputs.endtoend_suite }}
+        ENDTOEND_CONFIG: ${{ inputs.endtoend_config }}
+      run: |
+        echo "Running behat"
+        BEHAT_CONFIG="behat.yml"
+        if [ "$ENDTOEND_CONFIG" != "" ]; then
+          BEHAT_CONFIG="$ENDTOEND_CONFIG"
+        fi
+        if [ ! -f "$BEHAT_CONFIG" ]; then
+          echo "behat.yml config missing"
+          exit 1
+        fi
+        # Remove any sneaky attempts to put __* files into pull-requests
+        if [ -f __behat.yml ]; then
+          rm __behat.yml
+        fi
+        if [ -f __behat.php ]; then
+          rm __behat.php
+        fi
+        if [ -f __behat_headless.yml ]; then
+          rm __behat_headless.yml
+        fi
+        cp "$BEHAT_CONFIG" __behat.yml
+        cp ${{ github.action_path }}/behat.php __behat.php
+        cp ${{ github.action_path }}/behat_headless.yml __behat_headless.yml
+        php __behat.php
+        rm __behat.php
+        rm __behat_headless.yml
+        # start chromedriver as a background process
+        nohup sh -c "chromedriver" > /dev/null 2>&1 &
+        if [ "$ENDTOEND_SUITE" != "root" ]; then
+          vendor/bin/behat --colors --strict --config __behat.yml "$ENDTOEND_SUITE"
+        else
+          vendor/bin/behat --colors --strict --config __behat.yml
+        fi
+        echo "Passed"
+
+    - name: Run JS tests
+      if: ${{ inputs.js == 'true' }}
+      shell: bash
+      run: |
+        echo "Running JS tests"
+        if [ ! -f package.json ]; then
+          echo "package.json missing"
+          exit 1
+        fi
+        wget https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh
+        php -r "if (hash_file('sha384', 'install.sh') === 'dd4b116a7452fc3bb8c0e410ceac27e19b0ba0f900fe2f91818a95c12e92130fdfb8170fec170b9fb006d316f6386f2b') { echo 'Installer verified'; } else { echo 'Installer corrupt'; unlink('install.sh'); } echo PHP_EOL;"
+        if [ ! -f install.sh ]; then
+          echo "Cannot install nvm"
+          exit 1
+        fi
+        . install.sh
+        rm install.sh
+        export NVM_DIR="$HOME/.nvm"
+        # this loads nvm into the current terminal
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        if [ ! -f .nvmrc ]; then
+          echo "Missing .nvmrc"
+          exit 1
+        fi
+        nvm install
+        nvm use
+        rm -rf client/dist
+        npm install -g yarn
+        yarn install --network-concurrency 1
+        if [ -d vendor/silverstripe/admin ]; then
+          cd vendor/silverstripe/admin
+          yarn install --network-concurrency 1
+          cd ../../..
+        fi
+        yarn run build
+        echo "Running git diff"
+        git diff-files --quiet -w --relative=client
+        git diff --name-status --relative=client
+        echo "Running yarn test"
+        yarn run test
+        echo "Running yarn lint"
+        yarn run lint
+        echo "Passed"
+
+    - name: "Run PHP linting"
+      if: ${{ inputs.phplinting == 'true' }}
+      shell: bash
+      run: |
+        echo "Running PHPCS"
+        if [ ! -f phpcs.xml.dist ]; then
+          echo "Missing phpcs.xml.dist"
+          exit 1
+        fi
+        vendor/bin/phpcs
+        # phpstan is optional
+        if [ -f phpstan.neon.dist ]; then
+          echo "Running PHPStan"
+          vendor/bin/phpstan analyse
+        fi
+        # cow validation is also done here due to it being a tiny piece of work not meriting its own step
+        if [ -f .cow.json ]; then
+          echo "Running cow schema validate"
+          vendor/bin/cow schema:validate
+        fi
+        echo "Passed"
+
+    - name: "Run PHP coverage"
+      if: ${{ inputs.phpcoverage == 'true' }}
+      shell: bash
+      run: |
+        echo "Running codecov"
+        curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --import
+        curl -Os https://uploader.codecov.io/latest/codecov-linux
+        curl -Os https://uploader.codecov.io/latest/codecov-linux.SHA256SUM
+        curl -Os https://uploader.codecov.io/latest/codecov-linux.SHA256SUM.sig
+        gpg --verify codecov-linux.SHA256SUM.sig codecov-linux.SHA256SUM
+        shasum -a 256 -c codecov-linux.SHA256SUM
+        chmod +x codecov-linux
+        phpdbg -qrr vendor/bin/phpunit --coverage-clover=coverage.xml
+        ./codecov-linux -f coverage.xml;
+        echo "coverage.xml generated and uploaded to codecov"
