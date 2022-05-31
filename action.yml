@@ -2,26 +2,6 @@ name: Run tests
 description: Run tests for a single matrix entry
 
 inputs:
-  endtoend:
-    type: boolean
-    default: false
-  # if endtoend_suite is blank or "root" it will run suites defined in root behat.yml
-  # passing this input is intended for extra_jobs running non-root suites
-  # e.g. running "asset-admin" behat from silverstripe-installer
-  endtoend_suite:
-    type: string
-    required: false
-    default: ''
-  endtoend_config:
-    type: string
-    required: false
-    default: ''
-  phpcoverage:
-    type: boolean
-    default: false
-  phplinting:
-    type: boolean
-    default: false
   phpunit:
     type: boolean
     default: false
@@ -32,7 +12,24 @@ inputs:
   phpunit_fail_on_warning:
     type: boolean
     default: false
+  endtoend:
+    type: boolean
+    default: false
+  endtoend_suite:
+    type: string
+    required: false
+    default: ''
+  endtoend_config:
+    type: string
+    required: false
+    default: ''
   js:
+    type: boolean
+    default: false
+  phpcoverage:
+    type: boolean
+    default: false
+  phplinting:
     type: boolean
     default: false
 
@@ -62,22 +59,19 @@ runs:
 
     - name: Run PHPUnit
       # input booleans are converted to strings
-      # https://docs.github.com/en/actions/learn-github-actions/expressions#functions
       if: ${{ inputs.phpunit == 'true' }}
       shell: bash
       env:
         PHPUNIT_SUITE: ${{ inputs.phpunit_suite }}
       run: |
-        FAIL_ON_WARNING=
-        if [ "${{ inputs.phpunit_fail_on_warning }}" == "true" ]; then
-          FAIL_ON_WARNING='--fail-on-warning'
+        PHPUNIT_OPTIONS="--verbose --colors=always"
+        if [[ "$PHPUNIT_SUITE" != "all" ]] && [[ "$PHPUNIT_SUITE" != "" ]]; then
+          PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --testsuite "$PHPUNIT_SUITE""
         fi
-        echo "Running PHPUnit with options: $FAIL_ON_WARNING"
-        if [ "$PHPUNIT_SUITE" == "all" ]; then
-          vendor/bin/phpunit --verbose --colors=always $FAIL_ON_WARNING
-        else
-          vendor/bin/phpunit --verbose --colors=always --testsuite "$PHPUNIT_SUITE" $FAIL_ON_WARNING
+        if [[ "${{ inputs.phpunit_fail_on_warning }}" == "true" ]]; then
+          PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --fail-on-warning"
         fi
+        vendor/bin/phpunit $PHPUNIT_OPTIONS
         echo "Passed"
 
     - name: Setup chrome and chromedriver
@@ -95,12 +89,12 @@ runs:
         [[ "$CDVR" =~ ([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+ ]]
         CDV="${BASH_REMATCH[1]}"
         # Reinstall if a.b.c versions do not match, though allow a different .d version
-        if [ "$GCV" != "$CDV" ]; then
+        if [[ "$GCV" != "$CDV" ]]; then
           WGC=$(which google-chrome)
           echo "google-chrome and chromedriver versions do not match, reinstalling"
-          sudo apt remove -y --purge google-chrome-stable || true
-          # Note that on ubuntu 20.04 and later, these will be installed via a snap and there seems
-          # too be a permission error with using snap on github actions, but it does not seem to matter
+          sudo apt remove -y --purge google-chrome-stable
+          # Note that on ubuntu 20.04 and later, these will be installed via a snap. When trying to install
+          # chromium (or any other snaps), we get a permission error, but it doesn't seem to cause problem. The error looks like this:
           # mkdir: cannot create directory '/run/user/1001': Permission denied
           sudo apt install -y chromium-browser chromium-chromedriver
           echo "Updated versions of chromium-browser and chromedriver"
@@ -120,23 +114,24 @@ runs:
       run: |
         echo "Running behat"
         BEHAT_CONFIG="behat.yml"
-        if [ "$ENDTOEND_CONFIG" != "" ]; then
+        if [[ "$ENDTOEND_CONFIG" != "" ]]; then
           BEHAT_CONFIG="$ENDTOEND_CONFIG"
         fi
-        if [ ! -f "$BEHAT_CONFIG" ]; then
-          echo "behat.yml config missing"
+        if ! [[ -f "$BEHAT_CONFIG" ]]; then
+          echo "$BEHAT_CONFIG config file missing"
           exit 1
         fi
-        # Remove any sneaky attempts to put __* files into pull-requests
-        if [ -f __behat.yml ]; then
+        # Remove any sneaky attempts to put __behat* files into pull-requests
+        if [[ -f __behat.yml ]]; then
           rm __behat.yml
         fi
-        if [ -f __behat.php ]; then
+        if [[ -f __behat.php ]]; then
           rm __behat.php
         fi
-        if [ -f __behat_headless.yml ]; then
+        if [[ -f __behat_headless.yml ]]; then
           rm __behat_headless.yml
         fi
+        # Copy files from the action to temporary locations to generate the new headless behat config
         cp "$BEHAT_CONFIG" __behat.yml
         cp ${{ github.action_path }}/behat.php __behat.php
         cp ${{ github.action_path }}/behat_headless.yml __behat_headless.yml
@@ -145,7 +140,7 @@ runs:
         rm __behat_headless.yml
         # start chromedriver as a background process
         nohup sh -c "chromedriver" > /dev/null 2>&1 &
-        if [ "$ENDTOEND_SUITE" != "root" ]; then
+        if [[ "$ENDTOEND_SUITE" != "root" ]]; then
           vendor/bin/behat --colors --strict --config __behat.yml "$ENDTOEND_SUITE"
         else
           vendor/bin/behat --colors --strict --config __behat.yml
@@ -157,13 +152,26 @@ runs:
       shell: bash
       run: |
         echo "Running JS tests"
-        if [ ! -f package.json ]; then
+        if [[ ! -f package.json ]]; then
           echo "package.json missing"
           exit 1
         fi
+        if [[ ! -f .nvmrc ]]; then
+          echo "Missing .nvmrc"
+          exit 1
+        fi
         wget https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh
-        php -r "if (hash_file('sha384', 'install.sh') === 'dd4b116a7452fc3bb8c0e410ceac27e19b0ba0f900fe2f91818a95c12e92130fdfb8170fec170b9fb006d316f6386f2b') { echo 'Installer verified'; } else { echo 'Installer corrupt'; unlink('install.sh'); } echo PHP_EOL;"
-        if [ ! -f install.sh ]; then
+        php -r '
+          $hash = "dd4b116a7452fc3bb8c0e410ceac27e19b0ba0f900fe2f91818a95c12e92130fdfb8170fec170b9fb006d316f6386f2b";
+          if (hash_file("sha384", "install.sh") === $hash) {
+            echo "Installer verified";
+          } else {
+            echo "Installer corrupt";
+            unlink('install.sh');
+          }
+          echo PHP_EOL;
+        '
+        if [[ ! -f install.sh ]]; then
           echo "Cannot install nvm"
           exit 1
         fi
@@ -171,17 +179,13 @@ runs:
         rm install.sh
         export NVM_DIR="$HOME/.nvm"
         # this loads nvm into the current terminal
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        if [ ! -f .nvmrc ]; then
-          echo "Missing .nvmrc"
-          exit 1
-        fi
+        [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
         nvm install
         nvm use
         rm -rf client/dist
         npm install -g yarn
         yarn install --network-concurrency 1
-        if [ -d vendor/silverstripe/admin ]; then
+        if [[ -d vendor/silverstripe/admin ]]; then
           cd vendor/silverstripe/admin
           yarn install --network-concurrency 1
           cd ../../..
@@ -201,18 +205,18 @@ runs:
       shell: bash
       run: |
         echo "Running PHPCS"
-        if [ ! -f phpcs.xml.dist ]; then
-          echo "Missing phpcs.xml.dist"
+        if ! [[ -f phpcs.xml ]] && ! [[ -f phpcs.xml.dist ]]; then
+          echo "Missing phpcs.xml or phpcs.xml.dist"
           exit 1
         fi
         vendor/bin/phpcs
         # phpstan is optional
-        if [ -f phpstan.neon.dist ]; then
+        if [[ -f phpstan.neon.dist ]]; then
           echo "Running PHPStan"
           vendor/bin/phpstan analyse
         fi
         # cow validation is also done here due to it being a tiny piece of work not meriting its own step
-        if [ -f .cow.json ]; then
+        if [[ -f .cow.json ]]; then
           echo "Running cow schema validate"
           vendor/bin/cow schema:validate
         fi

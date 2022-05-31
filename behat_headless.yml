@@ -18,8 +18,9 @@ default:
                 # disable gpu is often mentioned as fix after headless chrome suddenly breaks after an update
                 # leaving it in just in case to prevent hard to diagnose errors later
                 - "--disable-gpu"
-                # this following have been used by other to things working not sure which ones
-                # not sure where are actually required. these may fix future problems
+                # the following options have been used in dev to fix various issues.
+                # not sure which ones# are actually required, but it works with thi
+                # configuration and these may fix future problems
                 #https://stackoverflow.com/a/43840128/1689770
                 - "--disable-infobars"
                 # https://stackoverflow.com/a/50725918/1689770
