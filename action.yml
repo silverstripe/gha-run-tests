@@ -190,14 +190,21 @@ runs:
           yarn install --network-concurrency 1
           cd ../../..
         fi
-        yarn run build
-        echo "Running git diff"
-        git diff-files --quiet -w --relative=client
-        git diff --name-status --relative=client
-        echo "Running yarn test"
-        yarn run test
-        echo "Running yarn lint"
-        yarn run lint
+         if [[ $(cat package.json | jq -r '.scripts.build') != 'null' ]]; then
+          echo "Running yarn build"
+          yarn run build
+          echo "Running git diff"
+          git diff-files --quiet -w --relative=client
+          git diff --name-status --relative=client
+        fi
+        if [[ $(cat package.json | jq -r '.scripts.test') != 'null' ]]; then
+          echo "Running yarn test"
+          yarn run test
+        fi
+        if [[ $(cat package.json | jq -r '.scripts.lint') != 'null' ]]; then
+          echo "Running yarn lint"
+          yarn run lint
+        fi
         echo "Passed"
 
     - name: "Run PHP linting"
