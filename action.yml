@@ -201,17 +201,11 @@ runs:
           echo "Running yarn build"
           yarn run build
           echo "Running git diff"
-          GIT_DIFF_FILES=$(git diff-files --ignore-all-space --relative=client)
-          GIT_DIFF=$(git diff --name-status --relative=client)
-          if [[ $GIT_DIFF_FILES != "" ]]; then
-            echo "git diff files:"
-            echo $GIT_DIFF_FILES
-          fi
+          git add .
+          GIT_DIFF=$(git diff --name-status --relative=client && git diff --cached --name-status --relative=client)
           if [[ $GIT_DIFF != "" ]]; then
             echo "git diff:"
             echo $GIT_DIFF
-          fi
-          if [[ $GIT_DIFF_FILES != "" ]] || [[ $GIT_DIFF != "" ]]; then
             exit 1
           fi
         fi
