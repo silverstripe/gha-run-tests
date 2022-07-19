@@ -201,7 +201,7 @@ runs:
           echo "Running yarn build"
           yarn run build
           echo "Running git diff"
-          git add .
+          git add client
           GIT_DIFF=$(git diff --name-status --relative=client && git diff --cached --name-status --relative=client)
           if [[ $GIT_DIFF != "" ]]; then
             echo "git diff:"
