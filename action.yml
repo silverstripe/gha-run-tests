@@ -180,16 +180,23 @@ runs:
         export NVM_DIR="$HOME/.nvm"
         # this loads nvm into the current terminal
         [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
-        nvm install
-        nvm use
-        rm -rf client/dist
-        npm install -g yarn
-        yarn install --network-concurrency 1
+        ADMIN_NPM_VERSION=
         if [[ -d vendor/silverstripe/admin ]]; then
           cd vendor/silverstripe/admin
+          nvm install
+          nvm use
+          ADMIN_NPM_VERSION=$(npm -v)
+          npm install -g yarn
           yarn install --network-concurrency 1
           cd ../../..
         fi
+        nvm install
+        nvm use
+        rm -rf client/dist
+        if [[ $(npm -v) != $ADMIN_NPM_VERSION ]]; then
+          npm install -g yarn;
+        fi
+        yarn install --network-concurrency 1
          if [[ $(cat package.json | jq -r '.scripts.build') != 'null' ]]; then
           echo "Running yarn build"
           yarn run build
