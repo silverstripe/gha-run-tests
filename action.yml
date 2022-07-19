@@ -197,12 +197,23 @@ runs:
           npm install -g yarn;
         fi
         yarn install --network-concurrency 1
-         if [[ $(cat package.json | jq -r '.scripts.build') != 'null' ]]; then
+        if [[ $(cat package.json | jq -r '.scripts.build') != 'null' ]]; then
           echo "Running yarn build"
           yarn run build
           echo "Running git diff"
-          git diff-files --quiet -w --relative=client
-          git diff --name-status --relative=client
+          GIT_DIFF_FILES=$(git diff-files --ignore-all-space --relative=client)
+          GIT_DIFF=$(git diff --name-status --relative=client)
+          if [[ $GIT_DIFF_FILES != "" ]]; then
+            echo "git diff files:"
+            echo $GIT_DIFF_FILES
+          fi
+          if [[ $GIT_DIFF != "" ]]; then
+            echo "git diff:"
+            echo $GIT_DIFF
+          fi
+          if [[ $GIT_DIFF_FILES != "" ]] || [[ $GIT_DIFF != "" ]]; then
+            exit 1
+          fi
         fi
         if [[ $(cat package.json | jq -r '.scripts.test') != 'null' ]]; then
           echo "Running yarn test"
