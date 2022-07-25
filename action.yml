@@ -192,19 +192,30 @@ runs:
         fi
         nvm install
         nvm use
-        rm -rf client/dist
         if [[ $(npm -v) != $ADMIN_NPM_VERSION ]]; then
           npm install -g yarn;
         fi
         yarn install --network-concurrency 1
         if [[ $(cat package.json | jq -r '.scripts.build') != 'null' ]]; then
+          DIST_DIR=
+          if [[ -d client/dist ]]; then
+            DIST_DIR=client/dist
+          elif [[ -d dist ]]; then
+            DIST_DIR=dist
+          else
+            echo "No dist directory found"
+            exit 1
+          fi
+          echo "Deleting $DIST_DIR"
+          rm -rf $DIST_DIR
           echo "Running yarn build"
           yarn run build
           echo "Running git diff"
-          git add client
-          GIT_DIFF=$(git diff --name-status --relative=client && git diff --cached --name-status --relative=client)
+          # Add all files to ensure that any new files previously uncommitted are tracked
+          git add $DIST_DIR
+          GIT_DIFF=$(git diff --cached --name-status --relative=$DIST_DIR)
           if [[ $GIT_DIFF != "" ]]; then
-            echo "git diff:"
+            echo "git diff found modified files when it should not have:"
             echo $GIT_DIFF
             exit 1
           fi
