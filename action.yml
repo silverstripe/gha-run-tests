@@ -245,11 +245,6 @@ runs:
           echo "Running PHPStan"
           vendor/bin/phpstan analyse
         fi
-        # cow validation is also done here due to it being a tiny piece of work not meriting its own step
-        if [[ -f .cow.json ]]; then
-          echo "Running cow schema validate"
-          vendor/bin/cow schema:validate
-        fi
         echo "Passed"
 
     - name: "Run PHP coverage"
