@@ -217,6 +217,12 @@ runs:
           if [[ $GIT_DIFF != "" ]]; then
             echo "git diff found modified files when it should not have:"
             echo $GIT_DIFF
+            echo "sha1sum of files that are different:"
+            for FILEPATH in $(git diff --cached --name-only); do
+              if [[ -f $FILEPATH ]]; then
+                sha1sum $FILEPATH
+              fi
+            done
             exit 1
           fi
         fi
