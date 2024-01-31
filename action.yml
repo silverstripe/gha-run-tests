@@ -218,11 +218,24 @@ runs:
             echo "git diff found modified files when it should not have:"
             echo $GIT_DIFF
             echo "sha1sum of files that are different:"
+            COPIED_COUNT=0
             for FILEPATH in $(git diff --cached --name-only); do
               if [[ -f $FILEPATH ]]; then
                 sha1sum $FILEPATH
+                # Only copy if the file is less than 10 megabytes to prevent malicous behaviour
+                # Only copy a max of 10 files, also to prevent malicious behaviour
+                MEGABYTES=$(ls -l --b=M "$DIST_DIR/$FILEPATH" | cut -d " " -f5 | sed "s/M//")
+                if (($MEGABYTES >= 10)); then
+                  echo "File $FILEPATH is larger than 10 megabytes, not copying"
+                elif (($COPIED_COUNT >= 10)); then
+                  echo "More than 10 files have been copied, not copying $FILEPATH"
+                else
+                  cp "$DIST_DIR/$FILEPATH" artifacts
+                  COPIED_COUNT=$((COPIED_COUNT+1))
+                fi
               fi
             done
+            echo "Files that are different have been copied to artifacts directory"
             exit 1
           fi
         fi
