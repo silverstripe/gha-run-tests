@@ -32,6 +32,9 @@ inputs:
   phplinting:
     type: boolean
     default: false
+  doclinting:
+    type: boolean
+    default: true
 
 runs:
   using: composite
@@ -160,23 +163,18 @@ runs:
           echo "Missing .nvmrc"
           exit 1
         fi
-        wget https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh
-        php -r '
-          $hash = "dd4b116a7452fc3bb8c0e410ceac27e19b0ba0f900fe2f91818a95c12e92130fdfb8170fec170b9fb006d316f6386f2b";
-          if (hash_file("sha384", "install.sh") === $hash) {
-            echo "Installer verified";
-          } else {
-            echo "Installer corrupt";
-            unlink('install.sh');
-          }
-          echo PHP_EOL;
-        '
-        if [[ ! -f install.sh ]]; then
-          echo "Cannot install nvm"
+        # Remove any sneaky attempts to put __install-nvm.sh into pull-requests
+        if [[ -f __install-nvm.sh ]]; then
+          rm __install-nvm.sh
+        fi
+        # Install nvm
+        cp ${{ github.action_path }}/install-nvm.sh __install-nvm.sh
+        chmod +x __install-nvm.sh
+        ./__install-nvm.sh
+        if [[ $? != 0 ]]; then
+          echo "Error while installing nvm"
           exit 1
         fi
-        . install.sh
-        rm install.sh
         export NVM_DIR="$HOME/.nvm"
         # this loads nvm into the current terminal
         [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
@@ -281,3 +279,43 @@ runs:
         phpdbg -qrr vendor/bin/phpunit --coverage-clover=coverage.xml
         ./codecov-linux -f coverage.xml;
         echo "coverage.xml generated and uploaded to codecov"
+
+    - name: "Run documentation linting"
+      if: ${{ inputs.doclinting == 'true' }}
+      shell: bash
+      run: |
+        echo "Running documentation linting"
+        if [[ ! -f vendor/silverstripe/documentation-lint/.nvmrc ]]; then
+          echo "File vendor/silverstripe/documentation-lint/.nvmrc is missing. Check dependencies."
+          exit 1
+        fi
+        # Remove any sneaky attempts to put __install-nvm.sh into pull-requests
+        if [[ -f __install-nvm.sh ]]; then
+          rm __install-nvm.sh
+        fi
+        # Install nvm
+        cp ${{ github.action_path }}/install-nvm.sh __install-nvm.sh
+        chmod +x __install-nvm.sh
+        ./__install-nvm.sh
+        if [[ $? != 0 ]]; then
+          echo "Error while installing nvm"
+          exit 1
+        fi
+        export NVM_DIR="$HOME/.nvm"
+        # this loads nvm into the current terminal
+        [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
+        # Swap to correct version and make sure yarn is installed
+        NPM_VERSION=$(cat vendor/silverstripe/documentation-lint/.nvmrc)
+        nvm install $NPM_VERSION && nvm use $NPM_VERSION
+        npm install --global yarn
+        # Run the linting script
+        vendor/bin/doclint
+        echo "Passed"
+
+    - name: Delete temporary files
+      shell: bash
+      if: always()
+      run: |
+        if [[ -f __install-nvm.sh ]]; then
+          rm __install-nvm.sh
+        fi
