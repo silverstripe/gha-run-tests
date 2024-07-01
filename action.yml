@@ -238,6 +238,10 @@ runs:
       if: ${{ inputs.phplinting == 'true' }}
       shell: bash
       run: |
+        if [[ -f vendor/bin/parallel-lint ]]; then
+          echo "Running parallel-lint"
+          vendor/bin/parallel-lint --exclude vendor --exclude .git .
+        fi
         echo "Running PHPCS"
         if ! [[ -f phpcs.xml ]] && ! [[ -f phpcs.xml.dist ]]; then
           echo "Missing phpcs.xml or phpcs.xml.dist"
