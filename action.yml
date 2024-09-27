@@ -203,6 +203,8 @@ runs:
           echo "Missing .nvmrc"
           exit 1
         fi
+        # Set nvmdir explicitly before installation. Default dir doesn't work for some reason.
+        export NVM_DIR="${HOME}/.nvm"
         # Remove any sneaky attempts to put __install-nvm.sh into pull-requests
         if [[ -f __install-nvm.sh ]]; then
           rm __install-nvm.sh
@@ -215,7 +217,6 @@ runs:
           echo "Error while installing nvm"
           exit 1
         fi
-        export NVM_DIR="$HOME/.nvm"
         # this loads nvm into the current terminal
         [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
         ADMIN_NPM_VERSION=
