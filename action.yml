@@ -97,12 +97,15 @@ runs:
         if [[ "${{ inputs.phpunit_fail_on_warning }}" == "true" ]]; then
           PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --fail-on-warning"
         fi
-        # Special filtering for silverstripe/framework testsuites
-        if [[ "$PHPUNIT_SUITE" == "framework-orm" ]]; then
-          PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --filter /ORM/"
-        fi
-        if [[ "$PHPUNIT_SUITE" == "framework-core" ]]; then
-          PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --exclude-filter /ORM/"
+        # --exclude-filter added in PHPUnit 11
+        if (( "$INT_VERSION" >= 110300 )); then
+          # Special filtering for silverstripe/framework testsuites
+          if [[ "$PHPUNIT_SUITE" == "framework-orm" ]]; then
+            PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --filter /ORM/"
+          fi
+          if [[ "$PHPUNIT_SUITE" == "framework-core" ]]; then
+            PHPUNIT_OPTIONS="$PHPUNIT_OPTIONS --exclude-filter /ORM/"
+          fi
         fi
         echo "PHPUNIT_OPTIONS is $PHPUNIT_OPTIONS"
         vendor/bin/phpunit $PHPUNIT_OPTIONS
