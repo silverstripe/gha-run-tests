@@ -227,18 +227,23 @@ runs:
         fi
         # this loads nvm into the current terminal
         [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh" --no-use
+        # this loads nvm_install_retry, which retries `nvm install` on network failures
+        \. ${{ github.action_path }}/nvm-install-retry.sh
         ADMIN_NPM_VERSION=
         if [[ -d vendor/silverstripe/admin ]]; then
           cd vendor/silverstripe/admin
-          nvm install
+          nvm_install_retry
           nvm use
           ADMIN_NPM_VERSION=$(npm -v)
           npm install --ignore-scripts -g yarn
           yarn install --ignore-scripts --network-concurrency 1
           cd ../../..
         fi
-        nvm install
-        nvm use
+        # `nvm use` is enough if this module uses the same node version as admin
+        if ! nvm use; then
+          nvm_install_retry
+          nvm use
+        fi
         if [[ $(npm -v) != $ADMIN_NPM_VERSION ]]; then
           npm install --ignore-scripts -g yarn;
         fi
@@ -344,9 +349,11 @@ runs:
         export NVM_DIR="$HOME/.nvm"
         # this loads nvm into the current terminal
         [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
+        # this loads nvm_install_retry, which retries `nvm install` on network failures
+        \. ${{ github.action_path }}/nvm-install-retry.sh
         # Swap to correct version and make sure yarn is installed
         NPM_VERSION=$(cat vendor/silverstripe/documentation-lint/.nvmrc)
-        nvm install $NPM_VERSION && nvm use $NPM_VERSION
+        nvm_install_retry $NPM_VERSION && nvm use $NPM_VERSION
         npm install --ignore-scripts --global yarn
         # Run the linting script
         vendor/bin/doclint
