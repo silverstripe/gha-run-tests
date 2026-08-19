@@ -196,6 +196,14 @@ runs:
     - name: Run JS tests
       if: ${{ inputs.js == 'true' }}
       shell: bash
+      env:
+        # Auto-approve corepack's yarn download
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        # Overrides .yarnrc.yml so a forked pull-request cannot re-enable scripts
+        YARN_ENABLE_SCRIPTS: "false"
+        # Limit concurrent npm requests to avoid rate limiting in CI - modules do not
+        # set networkConcurrency in .yarnrc.yml so local installs stay fast
+        YARN_NETWORK_CONCURRENCY: "1"
       run: |
         echo "Running JS tests"
         if [[ ! -f package.json ]]; then
@@ -204,6 +212,10 @@ runs:
         fi
         if [[ ! -f .nvmrc ]]; then
           echo "Missing .nvmrc"
+          exit 1
+        fi
+        if [[ $(jq -r '.packageManager // empty' package.json) != yarn@4.* ]]; then
+          echo 'package.json must declare "packageManager": "yarn@4.x.y" - this action only supports yarn 4 via corepack'
           exit 1
         fi
         # Set nvmdir explicitly before installation. Default dir doesn't work for some reason.
@@ -229,14 +241,14 @@ runs:
         [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh" --no-use
         # this loads nvm_install_retry, which retries `nvm install` on network failures
         \. ${{ github.action_path }}/nvm-install-retry.sh
-        ADMIN_NPM_VERSION=
         if [[ -d vendor/silverstripe/admin ]]; then
           cd vendor/silverstripe/admin
           nvm_install_retry
           nvm use
-          ADMIN_NPM_VERSION=$(npm -v)
-          npm install --ignore-scripts -g yarn
-          yarn install --ignore-scripts --network-concurrency 1
+          # corepack is bundled with node 18 and provisions the yarn version declared in packageManager.
+          # Node 25+ does not bundle corepack - if node is bumped past 24, add npm install -g corepack first.
+          corepack enable
+          yarn install --immutable
           cd ../../..
         fi
         # `nvm use` is enough if this module uses the same node version as admin
@@ -244,10 +256,9 @@ runs:
           nvm_install_retry
           nvm use
         fi
-        if [[ $(npm -v) != $ADMIN_NPM_VERSION ]]; then
-          npm install --ignore-scripts -g yarn;
-        fi
-        yarn install --ignore-scripts --network-concurrency 1
+        # Enable again in case the node version changed - corepack shims are per node installation
+        corepack enable
+        yarn install --immutable
         if [[ $(cat package.json | jq -r '.scripts.build') != 'null' ]]; then
           DIST_DIR=
           if [[ -d client/dist ]]; then
@@ -328,6 +339,14 @@ runs:
     - name: "Run documentation linting"
       if: ${{ inputs.doclinting == 'true' }}
       shell: bash
+      env:
+        # Auto-approve corepack's yarn download
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        # Overrides any .yarnrc.yml so a forked pull-request cannot re-enable scripts
+        YARN_ENABLE_SCRIPTS: "false"
+        # Limit concurrent npm requests to avoid rate limiting in CI - modules do not
+        # set networkConcurrency in .yarnrc.yml so local installs stay fast
+        YARN_NETWORK_CONCURRENCY: "1"
       run: |
         echo "Running documentation linting"
         if [[ ! -f vendor/silverstripe/documentation-lint/.nvmrc ]]; then
@@ -354,7 +373,9 @@ runs:
         # Swap to correct version and make sure yarn is installed
         NPM_VERSION=$(cat vendor/silverstripe/documentation-lint/.nvmrc)
         nvm_install_retry $NPM_VERSION && nvm use $NPM_VERSION
-        npm install --ignore-scripts --global yarn
+        # corepack is bundled with node 18 and provisions the yarn version declared in packageManager.
+        # Node 25+ does not bundle corepack - if node is bumped past 24, add npm install -g corepack first.
+        corepack enable
         # Run the linting script
         vendor/bin/doclint
         echo "Passed"
